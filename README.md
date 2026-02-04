@@ -129,7 +129,7 @@ POST /api/qr/detect-mode
 {
   "mode": "BASIC",
   "confidence": 0.90,
-  "reason": "Lade gesamtes Dokument"
+  "reason": "Erstelle Zusammenfassung der Datei"
 }
 ```
 
@@ -142,7 +142,7 @@ POST /api/qr/detect-mode
                   │
                   ▼
 ┌─────────────────────────────────────┐
-│   Files/Folders ausgewählt?         │
+│   Datei/Ordner ausgewählt?          │
 └─────────────────────────────────────┘
         │ JA                    │ NEIN
         ▼                       ▼
@@ -160,6 +160,20 @@ POST /api/qr/detect-mode
               │    │
              QA  BASIC
 ```
+
+### Reason-Generierung
+
+Das LLM generiert kontextbezogene Aktionsbeschreibungen basierend auf:
+- **Auswahl-Typ**: Ordner, Datei, oder Dateien
+- **User-Query**: Die tatsächliche Anfrage des Benutzers
+
+**Beispiele:**
+| Query | Auswahl | Mode | Reason |
+|-------|---------|------|--------|
+| "Wer ist der Autor?" | Ordner | QA | "Suche nach dem Autor im Ordner" |
+| "Fasse zusammen" | Datei | BASIC | "Erstelle Zusammenfassung der Datei" |
+| "Wie ist das Wetter?" | - | SEARCH | "Suche aktuelle Wetterdaten" |
+| "Erkläre Photosynthese" | - | BASIC | "Erkläre den Prozess der Photosynthese" |
 
 ## API Docs
 

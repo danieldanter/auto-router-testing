@@ -62,21 +62,23 @@ class ModeDetector:
             # Calculate total tokens
             total_tokens = self._calculate_total_tokens(request)
             selection_desc = self._get_selection_description(request)
+            selection_type = self._get_selection_type(request)
 
-            logger.info(f"Selection: {selection_desc}, Total tokens: {total_tokens}")
+            logger.info(f"Selection: {selection_desc} (Type: {selection_type}), Total tokens: {total_tokens}")
 
             # RULE: If tokens exceed threshold → Always QA
             if total_tokens > token_threshold:
                 logger.info(f"Tokens {total_tokens} > {token_threshold} → QA (forced)")
+                target = "Ordner" if has_folder else "Datei"
                 return DetectModeResponse(
                     mode=DetectModeEnum.QA,
                     confidence=0.95,
-                    reason="Dokument zu groß - Verwende Vector Search"
+                    reason=f"{target} zu groß - Verwende Vector Search"
                 )
 
             # Tokens fit in context → LLM decides between QA and BASIC
             logger.info(f"Tokens {total_tokens} ≤ {token_threshold} → LLM decides QA vs BASIC")
-            llm_result = self._analyze_with_llm(query, has_files=True, selection_info=selection_desc)
+            llm_result = self._analyze_with_llm(query, has_files=True, selection_info=selection_desc, selection_type=selection_type)
 
             # Map LLM result to mode (SEARCH is blocked when files selected)
             mode = llm_result.get("mode", "QA")
@@ -107,11 +109,11 @@ class ModeDetector:
             reason=llm_result.get("reason", "LLM-Analyse")
         )
 
-    def _analyze_with_llm(self, query: str, has_files: bool, selection_info: str = "") -> dict:
+    def _analyze_with_llm(self, query: str, has_files: bool, selection_info: str = "", selection_type: str = "") -> dict:
         """Analyze query with Gemini LLM."""
         try:
             service = self._get_gemini_service()
-            return service.analyze_query(query, has_files, selection_info)
+            return service.analyze_query(query, has_files, selection_info, selection_type)
         except Exception as e:
             logger.error(f"LLM analysis failed: {e}")
             # Fallback
@@ -163,6 +165,20 @@ class ModeDetector:
             parts.append(f"{len(request.selectedFileIds)} Datei(en)")
 
         return " | ".join(parts) if parts else "Auswahl"
+
+    def _get_selection_type(self, request: DetectModeRequest) -> str:
+        """Get the type of selection (Ordner, Datei, Dateien)."""
+        has_folder = bool(request.selectedFolderId) or bool(request.selectedDatastores)
+        has_files = bool(request.selectedFiles) or bool(request.selectedFileIds)
+
+        if has_folder and has_files:
+            return "Ordner und Dateien"
+        elif has_folder:
+            return "Ordner"
+        elif has_files:
+            file_count = len(request.selectedFiles) + len(request.selectedFileIds)
+            return "Datei" if file_count == 1 else "Dateien"
+        return "Auswahl"
 
 
 # Singleton instance

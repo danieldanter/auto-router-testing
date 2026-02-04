@@ -24,8 +24,8 @@ LOCATION = "europe-west4"
 FILES_PROMPT = """Du bist ein Query-Analyzer für ein RAG-System. Analysiere die Benutzeranfrage und entscheide welcher Modus verwendet werden soll.
 
 KONTEXT:
-- Der Benutzer hat Dokumente/Dateien ausgewählt: JA
-- Ausgewählte Dateien/Ordner: {selection_info}
+- Ausgewählt: {selection_type}
+- Details: {selection_info}
 
 MODI:
 1. **QA** (RAG/Vector Search): Für spezifische Fragen die aus Dokumenten beantwortet werden können
@@ -48,11 +48,19 @@ WICHTIGE REGELN:
 
 BENUTZERANFRAGE: "{query}"
 
-Antwort NUR als JSON. Wähle für "reason" EXAKT eine dieser Optionen:
-- QA: "Durchsuche Dokument mit RAG" oder "Verwende Vector Search für Frage" 
-- BASIC: "Lade gesamtes Dokument" oder "Analysiere das gesamte Dokument"
+Antwort NUR als JSON:
+- "mode": "QA" oder "BASIC"
+- "reason": Kurze Aktionsbeschreibung (max 8 Wörter). Nutze "{target_word}" statt "Dokument" wenn passend.
 
-{{"mode": "QA oder BASIC", "reason": "EXAKT eine der obigen Optionen"}}
+Beispiele (mit Ordner):
+- QA + "Wer ist der Autor?" → "Suche nach dem Autor im Ordner"
+- BASIC + "Fasse zusammen" → "Erstelle Zusammenfassung des Ordners"
+
+Beispiele (mit Datei):
+- QA + "Was steht über KI?" → "Durchsuche Datei nach KI-Informationen"
+- BASIC + "Überblick geben" → "Analysiere gesamte Datei"
+
+{{"mode": "QA oder BASIC", "reason": "kontextbezogene Aktionsbeschreibung"}}
 """
 
 # Simpler prompt when no files selected
@@ -72,11 +80,17 @@ MODI:
 
 BENUTZERANFRAGE: "{query}"
 
-Antwort NUR als JSON. Wähle für "reason" EXAKT eine dieser Optionen:
-- SEARCH: "Suche im Web" oder "Hole aktuelle Daten"
-- BASIC: "Beantworte direkt" oder "Verarbeite Anfrage"
+Antwort NUR als JSON:
+- "mode": "SEARCH" oder "BASIC"
+- "reason": Eine kurze, kontextbezogene Aktionsbeschreibung (max 8 Wörter) die sich auf die Anfrage bezieht
 
-{{"mode": "SEARCH oder BASIC", "reason": "EXAKT eine der obigen Optionen"}}
+Beispiele für gute "reason" Antworten:
+- SEARCH + "Wie ist das Wetter?" → "Suche aktuelle Wetterdaten"
+- SEARCH + "News über Tesla" → "Suche aktuelle Tesla-Nachrichten"
+- BASIC + "Erkläre Photosynthese" → "Erkläre den Prozess der Photosynthese"
+- BASIC + "Schreibe ein Gedicht" → "Verfasse ein kreatives Gedicht"
+
+{{"mode": "SEARCH oder BASIC", "reason": "kontextbezogene Aktionsbeschreibung"}}
 """
 
 
@@ -129,7 +143,8 @@ class GeminiService:
         self,
         query: str,
         has_files: bool,
-        selection_info: str = ""
+        selection_info: str = "",
+        selection_type: str = ""
     ) -> dict:
         """
         Analyze a query and determine the appropriate mode.
@@ -138,6 +153,7 @@ class GeminiService:
             query: The user's query
             has_files: Whether files/folders are selected
             selection_info: Description of selected files/folders
+            selection_type: Type of selection ("Ordner", "Datei", "Dateien")
 
         Returns:
             dict with 'mode' and 'reason'
@@ -149,8 +165,17 @@ class GeminiService:
         try:
             # Choose prompt based on context
             if has_files:
+                # Determine target word for reason
+                target_word = "Ordner" if "Datenspeicher" in selection_info or "Ordner" in selection_type else "Datei"
+                if selection_type:
+                    type_desc = selection_type
+                else:
+                    type_desc = "Ordner" if "Datenspeicher" in selection_info else "Datei(en)"
+
                 prompt = FILES_PROMPT.format(
-                    selection_info=selection_info or "Dateien/Ordner ausgewählt",
+                    selection_type=type_desc,
+                    selection_info=selection_info or "Auswahl",
+                    target_word=target_word,
                     query=query
                 )
             else:
@@ -162,7 +187,7 @@ class GeminiService:
                 prompt,
                 generation_config=GenerationConfig(
                     temperature=0.1,  # Low temperature for consistent results
-                    max_output_tokens=500,
+                    max_output_tokens=1024,  # Higher to avoid truncation issues
                 )
             )
             logger.info("Gemini API call completed")
@@ -180,34 +205,33 @@ class GeminiService:
             clean_text = re.sub(r'```\s*', '', clean_text)
             clean_text = clean_text.strip()
 
-            # Try to parse complete JSON first
+            # Extract mode first (always needed)
+            mode_match = re.search(r'"mode":\s*"(QA|BASIC|SEARCH)"', clean_text, re.IGNORECASE)
+            if not mode_match:
+                logger.warning(f"Could not find mode in response: {result_text}")
+                return self._fallback_analysis(has_files, selection_type)
+
+            mode = mode_match.group(1).upper()
+
+            # Extract reason - try complete JSON first, then partial
+            reason = None
             json_match = re.search(r'\{.*\}', clean_text, re.DOTALL)
             if json_match:
                 try:
                     result = json.loads(json_match.group())
-                    mode = result.get("mode", "BASIC").upper()
-                    reason = result.get("reason", "LLM-Analyse")
+                    reason = result.get("reason")
                 except json.JSONDecodeError:
-                    # JSON incomplete - extract mode manually
-                    mode_match = re.search(r'"mode":\s*"(QA|BASIC|SEARCH)"', clean_text, re.IGNORECASE)
-                    reason_match = re.search(r'"reason":\s*"([^"]*)', clean_text)
+                    pass
 
-                    if mode_match:
-                        mode = mode_match.group(1).upper()
-                        reason = reason_match.group(1) if reason_match else "LLM-Analyse"
-                    else:
-                        return self._fallback_analysis(has_files)
-            else:
-                # No JSON brackets - try to extract mode directly
-                mode_match = re.search(r'"mode":\s*"(QA|BASIC|SEARCH)"', clean_text, re.IGNORECASE)
+            # If no reason from JSON, extract partial reason
+            if not reason:
                 reason_match = re.search(r'"reason":\s*"([^"]*)', clean_text)
+                if reason_match and reason_match.group(1).strip():
+                    reason = reason_match.group(1).strip()
 
-                if mode_match:
-                    mode = mode_match.group(1).upper()
-                    reason = reason_match.group(1) if reason_match else "LLM-Analyse"
-                else:
-                    logger.warning(f"Could not parse Gemini response: {result_text}")
-                    return self._fallback_analysis(has_files)
+            # If still no reason, generate a default based on mode and selection
+            if not reason:
+                reason = self._generate_default_reason(mode, selection_type)
 
             # Validate mode
             if mode not in ["QA", "BASIC", "SEARCH"]:
@@ -216,20 +240,33 @@ class GeminiService:
             # Enforce rule: no SEARCH with files
             if has_files and mode == "SEARCH":
                 mode = "QA"
-                reason = "Web-Suche nicht möglich mit Dateien - verwende RAG"
+                reason = self._generate_default_reason("QA", selection_type)
 
             return {"mode": mode, "reason": reason}
 
         except Exception as e:
             logger.error(f"Gemini analysis error: {e}")
-            return self._fallback_analysis(has_files)
+            return self._fallback_analysis(has_files, selection_type if has_files else "")
 
-    def _fallback_analysis(self, has_files: bool) -> dict:
+    def _generate_default_reason(self, mode: str, selection_type: str) -> str:
+        """Generate a default reason when LLM response is incomplete."""
+        target = "Ordner" if "Ordner" in selection_type else "Datei"
+
+        if mode == "QA":
+            return f"Durchsuche {target}"
+        elif mode == "BASIC":
+            return f"Analysiere {target}"
+        elif mode == "SEARCH":
+            return "Suche im Web"
+        return "Verarbeite Anfrage"
+
+    def _fallback_analysis(self, has_files: bool, selection_type: str = "") -> dict:
         """Fallback when Gemini is not available."""
         if has_files:
-            return {"mode": "QA", "reason": "Fallback: Dateien ausgewählt → RAG"}
+            target = "Ordner" if "Ordner" in selection_type else "Datei"
+            return {"mode": "QA", "reason": f"Durchsuche {target}"}
         else:
-            return {"mode": "BASIC", "reason": "Fallback: Normaler Chat"}
+            return {"mode": "BASIC", "reason": "Verarbeite Anfrage"}
 
     def is_available(self) -> bool:
         """Check if Gemini service is available."""
