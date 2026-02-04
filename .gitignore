@@ -1,0 +1,10 @@
+venv/
+.env
+__pycache__/
+*.pyc
+.streamlit/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+credentials.json

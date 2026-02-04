@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  query-router:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+    image: 506/query-router:dev
+    container_name: query-router
+    env_file:
+      - ../.env
+    ports:
+      - "8000:8000"
+    # No volumes needed - credentials come from Secrets Service
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
