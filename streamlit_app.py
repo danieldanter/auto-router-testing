@@ -4,6 +4,7 @@ Allows testing queries with pseudo files/folders and editing prompts.
 """
 import json
 import logging
+import importlib
 import streamlit as st
 
 from src.models.api_schemas import (
@@ -18,23 +19,27 @@ import src.services.gemini_service as gs
 # Configure logging to capture Gemini responses
 logging.basicConfig(level=logging.INFO)
 
-# Store original prompts ONCE in session_state (survives reruns without being overwritten)
-if "original_files_prompt" not in st.session_state:
-    st.session_state.original_files_prompt = gs.FILES_PROMPT
-if "original_no_files_prompt" not in st.session_state:
-    st.session_state.original_no_files_prompt = gs.NO_FILES_PROMPT
+# Get the TRUE original prompts from source code (reload module to bypass any runtime changes)
+@st.cache_data
+def _load_original_prompts():
+    """Load original prompts fresh from source code. Cached once per app lifetime."""
+    import src.services.gemini_service as _gs_fresh
+    importlib.reload(_gs_fresh)
+    return _gs_fresh.FILES_PROMPT, _gs_fresh.NO_FILES_PROMPT
+
+_ORIGINAL_FILES_PROMPT, _ORIGINAL_NO_FILES_PROMPT = _load_original_prompts()
 
 # Initialize widget keys for text_area (these are owned by the widget via key=)
 if "widget_files_prompt" not in st.session_state:
-    st.session_state.widget_files_prompt = st.session_state.original_files_prompt
+    st.session_state.widget_files_prompt = _ORIGINAL_FILES_PROMPT
 if "widget_no_files_prompt" not in st.session_state:
-    st.session_state.widget_no_files_prompt = st.session_state.original_no_files_prompt
+    st.session_state.widget_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
 
 # Track which prompts are actually applied to Gemini
 if "applied_files_prompt" not in st.session_state:
-    st.session_state.applied_files_prompt = st.session_state.original_files_prompt
+    st.session_state.applied_files_prompt = _ORIGINAL_FILES_PROMPT
 if "applied_no_files_prompt" not in st.session_state:
-    st.session_state.applied_no_files_prompt = st.session_state.original_no_files_prompt
+    st.session_state.applied_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
 
 # Always apply the confirmed prompts to module (survives reruns)
 gs.FILES_PROMPT = st.session_state.applied_files_prompt
@@ -43,14 +48,12 @@ gs.NO_FILES_PROMPT = st.session_state.applied_no_files_prompt
 
 def _reset_prompts():
     """Callback for Reset button - runs before next rerun so widget keys can be set."""
-    original_fp = st.session_state.original_files_prompt
-    original_nfp = st.session_state.original_no_files_prompt
-    st.session_state.widget_files_prompt = original_fp
-    st.session_state.widget_no_files_prompt = original_nfp
-    st.session_state.applied_files_prompt = original_fp
-    st.session_state.applied_no_files_prompt = original_nfp
-    gs.FILES_PROMPT = original_fp
-    gs.NO_FILES_PROMPT = original_nfp
+    st.session_state.widget_files_prompt = _ORIGINAL_FILES_PROMPT
+    st.session_state.widget_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+    st.session_state.applied_files_prompt = _ORIGINAL_FILES_PROMPT
+    st.session_state.applied_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+    gs.FILES_PROMPT = _ORIGINAL_FILES_PROMPT
+    gs.NO_FILES_PROMPT = _ORIGINAL_NO_FILES_PROMPT
 
 # ============================================
 # Pseudo Test-Daten
