@@ -258,6 +258,9 @@ with tab1:
             )
 
             with st.spinner("Gemini analysiert..."):
+                # Ensure prompts are applied right before the call
+                gs.FILES_PROMPT = st.session_state.applied_files_prompt
+                gs.NO_FILES_PROMPT = st.session_state.applied_no_files_prompt
                 result = detector.detect(request)
 
             # Display result
