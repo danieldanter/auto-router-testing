@@ -22,15 +22,21 @@ logging.basicConfig(level=logging.INFO)
 _ORIGINAL_FILES_PROMPT = gs.FILES_PROMPT
 _ORIGINAL_NO_FILES_PROMPT = gs.NO_FILES_PROMPT
 
-# Initialize active prompts in session_state (restore originals if empty/missing)
-if "active_files_prompt" not in st.session_state or not st.session_state.active_files_prompt:
-    st.session_state.active_files_prompt = _ORIGINAL_FILES_PROMPT
-if "active_no_files_prompt" not in st.session_state or not st.session_state.active_no_files_prompt:
-    st.session_state.active_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+# Initialize widget keys for text_area (these are owned by the widget via key=)
+if "widget_files_prompt" not in st.session_state:
+    st.session_state.widget_files_prompt = _ORIGINAL_FILES_PROMPT
+if "widget_no_files_prompt" not in st.session_state:
+    st.session_state.widget_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
 
-# Always apply session_state prompts to module (survives reruns)
-gs.FILES_PROMPT = st.session_state.active_files_prompt
-gs.NO_FILES_PROMPT = st.session_state.active_no_files_prompt
+# Track which prompts are actually applied to Gemini
+if "applied_files_prompt" not in st.session_state:
+    st.session_state.applied_files_prompt = _ORIGINAL_FILES_PROMPT
+if "applied_no_files_prompt" not in st.session_state:
+    st.session_state.applied_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+
+# Always apply the confirmed prompts to module (survives reruns)
+gs.FILES_PROMPT = st.session_state.applied_files_prompt
+gs.NO_FILES_PROMPT = st.session_state.applied_no_files_prompt
 
 # ============================================
 # Pseudo Test-Daten
@@ -298,7 +304,7 @@ with tab2:
         st.caption("Wird verwendet wenn Dateien/Ordner ausgewählt sind")
         files_prompt_edit = st.text_area(
             "FILES_PROMPT",
-            value=st.session_state.active_files_prompt,
+            key="widget_files_prompt",
             height=400,
             label_visibility="collapsed",
         )
@@ -308,7 +314,7 @@ with tab2:
         st.caption("Wird verwendet wenn keine Dateien ausgewählt sind")
         no_files_prompt_edit = st.text_area(
             "NO_FILES_PROMPT",
-            value=st.session_state.active_no_files_prompt,
+            key="widget_no_files_prompt",
             height=400,
             label_visibility="collapsed",
         )
@@ -320,16 +326,18 @@ with tab2:
             if not files_prompt_edit.strip() or not no_files_prompt_edit.strip():
                 st.error("Prompts dürfen nicht leer sein! Nutze 'Reset' um die Originale wiederherzustellen.")
             else:
-                st.session_state.active_files_prompt = files_prompt_edit
-                st.session_state.active_no_files_prompt = no_files_prompt_edit
+                st.session_state.applied_files_prompt = files_prompt_edit
+                st.session_state.applied_no_files_prompt = no_files_prompt_edit
                 gs.FILES_PROMPT = files_prompt_edit
                 gs.NO_FILES_PROMPT = no_files_prompt_edit
                 st.success("Prompts aktualisiert!")
 
     with col_btn2:
         if st.button("Reset", use_container_width=True):
-            st.session_state.active_files_prompt = _ORIGINAL_FILES_PROMPT
-            st.session_state.active_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+            st.session_state.applied_files_prompt = _ORIGINAL_FILES_PROMPT
+            st.session_state.applied_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+            st.session_state.widget_files_prompt = _ORIGINAL_FILES_PROMPT
+            st.session_state.widget_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
             gs.FILES_PROMPT = _ORIGINAL_FILES_PROMPT
             gs.NO_FILES_PROMPT = _ORIGINAL_NO_FILES_PROMPT
             st.success("Prompts auf Original zurückgesetzt!")
