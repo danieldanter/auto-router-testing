@@ -242,12 +242,8 @@ if not check_password():
 
 st.title("Autonomous Mode Router - Testing")
 
-# Initialize detector
-@st.cache_resource
-def init_detector():
-    return get_mode_detector()
-
-detector = init_detector()
+# Initialize detector (no cache - detector is lightweight, GeminiService is lazy-loaded inside)
+detector = get_mode_detector()
 
 # ============================================
 # TABS
