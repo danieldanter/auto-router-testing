@@ -91,6 +91,33 @@ st.set_page_config(
     layout="wide",
 )
 
+# ============================================
+# Password Protection
+# ============================================
+APP_PASSWORD = st.secrets.get("APP_PASSWORD", "506testing")
+
+def check_password():
+    """Simple password gate."""
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if st.session_state.authenticated:
+        return True
+
+    st.title("Autonomous Mode Router - Testing")
+    st.markdown("---")
+    password = st.text_input("Passwort eingeben", type="password", placeholder="Passwort...")
+    if st.button("Login", type="primary"):
+        if password == APP_PASSWORD:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Falsches Passwort")
+    return False
+
+if not check_password():
+    st.stop()
+
 st.title("Autonomous Mode Router - Testing")
 
 # Initialize detector
