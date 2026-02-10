@@ -18,15 +18,15 @@ import src.services.gemini_service as gs
 # Configure logging to capture Gemini responses
 logging.basicConfig(level=logging.INFO)
 
-# Store original prompts for reset + active prompts in session_state
-if "original_files_prompt" not in st.session_state:
-    st.session_state.original_files_prompt = gs.FILES_PROMPT
-if "original_no_files_prompt" not in st.session_state:
-    st.session_state.original_no_files_prompt = gs.NO_FILES_PROMPT
-if "active_files_prompt" not in st.session_state:
-    st.session_state.active_files_prompt = gs.FILES_PROMPT
-if "active_no_files_prompt" not in st.session_state:
-    st.session_state.active_no_files_prompt = gs.NO_FILES_PROMPT
+# Store original prompts (from module source code, never changes)
+_ORIGINAL_FILES_PROMPT = gs.FILES_PROMPT
+_ORIGINAL_NO_FILES_PROMPT = gs.NO_FILES_PROMPT
+
+# Initialize active prompts in session_state (restore originals if empty/missing)
+if "active_files_prompt" not in st.session_state or not st.session_state.active_files_prompt:
+    st.session_state.active_files_prompt = _ORIGINAL_FILES_PROMPT
+if "active_no_files_prompt" not in st.session_state or not st.session_state.active_no_files_prompt:
+    st.session_state.active_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
 
 # Always apply session_state prompts to module (survives reruns)
 gs.FILES_PROMPT = st.session_state.active_files_prompt
@@ -317,18 +317,21 @@ with tab2:
 
     with col_btn1:
         if st.button("Übernehmen", type="primary", use_container_width=True):
-            st.session_state.active_files_prompt = files_prompt_edit
-            st.session_state.active_no_files_prompt = no_files_prompt_edit
-            gs.FILES_PROMPT = files_prompt_edit
-            gs.NO_FILES_PROMPT = no_files_prompt_edit
-            st.success("Prompts aktualisiert!")
+            if not files_prompt_edit.strip() or not no_files_prompt_edit.strip():
+                st.error("Prompts dürfen nicht leer sein! Nutze 'Reset' um die Originale wiederherzustellen.")
+            else:
+                st.session_state.active_files_prompt = files_prompt_edit
+                st.session_state.active_no_files_prompt = no_files_prompt_edit
+                gs.FILES_PROMPT = files_prompt_edit
+                gs.NO_FILES_PROMPT = no_files_prompt_edit
+                st.success("Prompts aktualisiert!")
 
     with col_btn2:
         if st.button("Reset", use_container_width=True):
-            st.session_state.active_files_prompt = st.session_state.original_files_prompt
-            st.session_state.active_no_files_prompt = st.session_state.original_no_files_prompt
-            gs.FILES_PROMPT = st.session_state.original_files_prompt
-            gs.NO_FILES_PROMPT = st.session_state.original_no_files_prompt
+            st.session_state.active_files_prompt = _ORIGINAL_FILES_PROMPT
+            st.session_state.active_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+            gs.FILES_PROMPT = _ORIGINAL_FILES_PROMPT
+            gs.NO_FILES_PROMPT = _ORIGINAL_NO_FILES_PROMPT
             st.success("Prompts auf Original zurückgesetzt!")
             st.rerun()
 
