@@ -4,7 +4,6 @@ Allows testing queries with pseudo files/folders and editing prompts.
 """
 import json
 import logging
-import importlib
 import streamlit as st
 
 from src.models.api_schemas import (
@@ -19,15 +18,78 @@ import src.services.gemini_service as gs
 # Configure logging to capture Gemini responses
 logging.basicConfig(level=logging.INFO)
 
-# Get the TRUE original prompts from source code (reload module to bypass any runtime changes)
-@st.cache_data
-def _load_original_prompts():
-    """Load original prompts fresh from source code. Cached once per app lifetime."""
-    import src.services.gemini_service as _gs_fresh
-    importlib.reload(_gs_fresh)
-    return _gs_fresh.FILES_PROMPT, _gs_fresh.NO_FILES_PROMPT
+# Hardcoded original prompts (copied from gemini_service.py source code)
+# These NEVER change at runtime - guaranteed safe for Reset
+_ORIGINAL_FILES_PROMPT = """Du bist ein Query-Analyzer für ein RAG-System. Analysiere die Benutzeranfrage und entscheide welcher Modus verwendet werden soll.
 
-_ORIGINAL_FILES_PROMPT, _ORIGINAL_NO_FILES_PROMPT = _load_original_prompts()
+KONTEXT:
+- Ausgewählt: {selection_type}
+- Details: {selection_info}
+
+MODI:
+1. **QA** (RAG/Vector Search): Für spezifische Fragen die aus Dokumenten beantwortet werden können
+   - "Was steht in dem Dokument über X?"
+   - "Finde Informationen zu Y"
+   - "Welche Daten gibt es zu Z?"
+   - "Was sagt das Dokument zu...?"
+   - Allgemeine Fragen über Dokument-Inhalte
+
+2. **BASIC** (Chat mit Dokument im Context): NUR für Fragen die das GESAMTE Dokument benötigen
+   - "Fasse das Dokument zusammen"
+   - "Was sind die Hauptthemen?"
+   - "Erkläre den Zusammenhang zwischen allen Kapiteln"
+   - "Gib mir einen Überblick über das ganze Dokument"
+
+WICHTIGE REGELN:
+- Bevorzuge QA (RAG ist effizienter)
+- BASIC nur wenn explizit das GESAMTE Dokument gebraucht wird (Summary, Überblick)
+- Im Zweifel → QA
+
+BENUTZERANFRAGE: "{query}"
+
+Antwort NUR als JSON:
+- "mode": "QA" oder "BASIC"
+- "reason": Kurze Aktionsbeschreibung (max 8 Wörter). Nutze "{target_word}" statt "Dokument" wenn passend.
+
+Beispiele (mit Ordner):
+- QA + "Wer ist der Autor?" → "Suche nach dem Autor im Ordner"
+- BASIC + "Fasse zusammen" → "Erstelle Zusammenfassung des Ordners"
+
+Beispiele (mit Datei):
+- QA + "Was steht über KI?" → "Durchsuche Datei nach KI-Informationen"
+- BASIC + "Überblick geben" → "Analysiere gesamte Datei"
+
+{{"mode": "QA oder BASIC", "reason": "kontextbezogene Aktionsbeschreibung"}}
+"""
+
+_ORIGINAL_NO_FILES_PROMPT = """Du bist ein Query-Analyzer. Analysiere ob die Anfrage eine Web-Suche benötigt.
+
+MODI:
+1. **SEARCH** (Web-Suche): Für aktuelle Informationen aus dem Internet
+   - Wetter, Nachrichten, Aktienkurse
+   - "Suche im Internet nach..."
+   - Aktuelle Events, Preise, Öffnungszeiten
+   - Alles was aktuelle/externe Daten braucht
+
+2. **BASIC** (Normaler Chat): Für alles andere
+   - Allgemeine Fragen, Erklärungen
+   - Kreative Aufgaben (Texte schreiben, Code)
+   - Wissen das kein Internet braucht
+
+BENUTZERANFRAGE: "{query}"
+
+Antwort NUR als JSON:
+- "mode": "SEARCH" oder "BASIC"
+- "reason": Eine kurze, kontextbezogene Aktionsbeschreibung (max 8 Wörter) die sich auf die Anfrage bezieht
+
+Beispiele für gute "reason" Antworten:
+- SEARCH + "Wie ist das Wetter?" → "Suche aktuelle Wetterdaten"
+- SEARCH + "News über Tesla" → "Suche aktuelle Tesla-Nachrichten"
+- BASIC + "Erkläre Photosynthese" → "Erkläre den Prozess der Photosynthese"
+- BASIC + "Schreibe ein Gedicht" → "Verfasse ein kreatives Gedicht"
+
+{{"mode": "SEARCH oder BASIC", "reason": "kontextbezogene Aktionsbeschreibung"}}
+"""
 
 # Initialize widget keys for text_area (these are owned by the widget via key=)
 if "widget_files_prompt" not in st.session_state:
