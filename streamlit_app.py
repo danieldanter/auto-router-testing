@@ -18,21 +18,23 @@ import src.services.gemini_service as gs
 # Configure logging to capture Gemini responses
 logging.basicConfig(level=logging.INFO)
 
-# Store original prompts (from module source code, never changes)
-_ORIGINAL_FILES_PROMPT = gs.FILES_PROMPT
-_ORIGINAL_NO_FILES_PROMPT = gs.NO_FILES_PROMPT
+# Store original prompts ONCE in session_state (survives reruns without being overwritten)
+if "original_files_prompt" not in st.session_state:
+    st.session_state.original_files_prompt = gs.FILES_PROMPT
+if "original_no_files_prompt" not in st.session_state:
+    st.session_state.original_no_files_prompt = gs.NO_FILES_PROMPT
 
 # Initialize widget keys for text_area (these are owned by the widget via key=)
 if "widget_files_prompt" not in st.session_state:
-    st.session_state.widget_files_prompt = _ORIGINAL_FILES_PROMPT
+    st.session_state.widget_files_prompt = st.session_state.original_files_prompt
 if "widget_no_files_prompt" not in st.session_state:
-    st.session_state.widget_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+    st.session_state.widget_no_files_prompt = st.session_state.original_no_files_prompt
 
 # Track which prompts are actually applied to Gemini
 if "applied_files_prompt" not in st.session_state:
-    st.session_state.applied_files_prompt = _ORIGINAL_FILES_PROMPT
+    st.session_state.applied_files_prompt = st.session_state.original_files_prompt
 if "applied_no_files_prompt" not in st.session_state:
-    st.session_state.applied_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+    st.session_state.applied_no_files_prompt = st.session_state.original_no_files_prompt
 
 # Always apply the confirmed prompts to module (survives reruns)
 gs.FILES_PROMPT = st.session_state.applied_files_prompt
@@ -41,12 +43,14 @@ gs.NO_FILES_PROMPT = st.session_state.applied_no_files_prompt
 
 def _reset_prompts():
     """Callback for Reset button - runs before next rerun so widget keys can be set."""
-    st.session_state.widget_files_prompt = _ORIGINAL_FILES_PROMPT
-    st.session_state.widget_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
-    st.session_state.applied_files_prompt = _ORIGINAL_FILES_PROMPT
-    st.session_state.applied_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
-    gs.FILES_PROMPT = _ORIGINAL_FILES_PROMPT
-    gs.NO_FILES_PROMPT = _ORIGINAL_NO_FILES_PROMPT
+    original_fp = st.session_state.original_files_prompt
+    original_nfp = st.session_state.original_no_files_prompt
+    st.session_state.widget_files_prompt = original_fp
+    st.session_state.widget_no_files_prompt = original_nfp
+    st.session_state.applied_files_prompt = original_fp
+    st.session_state.applied_no_files_prompt = original_nfp
+    gs.FILES_PROMPT = original_fp
+    gs.NO_FILES_PROMPT = original_nfp
 
 # ============================================
 # Pseudo Test-Daten
