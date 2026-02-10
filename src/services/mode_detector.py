@@ -66,14 +66,14 @@ class ModeDetector:
 
             logger.info(f"Selection: {selection_desc} (Type: {selection_type}), Total tokens: {total_tokens}")
 
-            # RULE: If tokens exceed threshold → Always QA
+            # RULE: If tokens exceed threshold → Always QA (with Gemini reason)
             if total_tokens > token_threshold:
-                logger.info(f"Tokens {total_tokens} > {token_threshold} → QA (forced)")
-                target = "Ordner" if has_folder else "Datei"
+                logger.info(f"Tokens {total_tokens} > {token_threshold} → QA (forced, generating reason via LLM)")
+                reason = self._generate_forced_qa_reason(query, selection_desc, selection_type)
                 return DetectModeResponse(
                     mode=DetectModeEnum.QA,
                     confidence=0.95,
-                    reason=f"{target} zu groß - Verwende Vector Search"
+                    reason=reason
                 )
 
             # Tokens fit in context → LLM decides between QA and BASIC
@@ -108,6 +108,16 @@ class ModeDetector:
             confidence=0.90,
             reason=llm_result.get("reason", "LLM-Analyse")
         )
+
+    def _generate_forced_qa_reason(self, query: str, selection_info: str, selection_type: str) -> str:
+        """Generate a contextual reason via Gemini for forced QA mode (tokens > threshold)."""
+        try:
+            service = self._get_gemini_service()
+            return service.generate_forced_qa_reason(query, selection_info, selection_type)
+        except Exception as e:
+            logger.error(f"Forced QA reason generation failed: {e}")
+            target = "Ordner" if "Ordner" in selection_type else "Datei"
+            return f"{target} zu groß - Verwende Vector Search"
 
     def _analyze_with_llm(self, query: str, has_files: bool, selection_info: str = "", selection_type: str = "") -> dict:
         """Analyze query with Gemini LLM."""

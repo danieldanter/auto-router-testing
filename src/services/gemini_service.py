@@ -93,6 +93,28 @@ Beispiele für gute "reason" Antworten:
 {{"mode": "SEARCH oder BASIC", "reason": "kontextbezogene Aktionsbeschreibung"}}
 """
 
+# Prompt when files are selected but tokens exceed threshold → forced QA
+FORCED_QA_PROMPT = """Der Benutzer hat {selection_type} ausgewählt, aber die Tokengröße überschreitet das Kontextlimit. Es wird automatisch Vector Search (QA) verwendet.
+
+KONTEXT:
+- Ausgewählt: {selection_type}
+- Details: {selection_info}
+- Modus: QA (Vector Search) - erzwungen wegen Tokengröße
+
+BENUTZERANFRAGE: "{query}"
+
+Erstelle eine kurze, kontextbezogene Aktionsbeschreibung (max 8 Wörter) für diese Anfrage.
+Nutze "{target_word}" statt "Dokument" wenn passend.
+
+Beispiele:
+- "Wer ist der Autor?" → "Durchsuche {target_word} nach dem Autor"
+- "Was steht über KI?" → "Suche KI-Informationen im {target_word}"
+- "Fasse zusammen" → "Durchsuche {target_word} per Vector Search"
+
+Antwort NUR als JSON:
+{{"reason": "kontextbezogene Aktionsbeschreibung"}}
+"""
+
 
 class GeminiService:
     """Service for Gemini LLM-based query analysis."""
@@ -247,6 +269,63 @@ class GeminiService:
         except Exception as e:
             logger.error(f"Gemini analysis error: {e}")
             return self._fallback_analysis(has_files, selection_type if has_files else "")
+
+    def generate_forced_qa_reason(self, query: str, selection_info: str = "", selection_type: str = "") -> str:
+        """Generate a contextual reason for forced QA mode (tokens > threshold)."""
+        if not self.available or not self.model:
+            target = "Ordner" if "Ordner" in selection_type else "Datei"
+            return f"{target} zu groß - Verwende Vector Search"
+
+        try:
+            target_word = "Ordner" if "Datenspeicher" in selection_info or "Ordner" in selection_type else "Datei"
+            type_desc = selection_type if selection_type else "Datei(en)"
+
+            prompt = FORCED_QA_PROMPT.format(
+                selection_type=type_desc,
+                selection_info=selection_info or "Auswahl",
+                target_word=target_word,
+                query=query
+            )
+
+            logger.info(f"Calling Gemini API for forced QA reason with prompt length: {len(prompt)}")
+            response = self.model.generate_content(
+                prompt,
+                generation_config=GenerationConfig(
+                    temperature=0.1,
+                    max_output_tokens=256,
+                )
+            )
+            logger.info("Gemini forced QA reason call completed")
+
+            result_text = response.text.strip()
+            logger.info(f"Gemini forced QA reason response: {result_text}")
+
+            import json
+            import re
+
+            clean_text = re.sub(r'```json\s*', '', result_text)
+            clean_text = re.sub(r'```\s*', '', clean_text)
+            clean_text = clean_text.strip()
+
+            json_match = re.search(r'\{.*\}', clean_text, re.DOTALL)
+            if json_match:
+                try:
+                    result = json.loads(json_match.group())
+                    reason = result.get("reason")
+                    if reason:
+                        return reason
+                except json.JSONDecodeError:
+                    pass
+
+            reason_match = re.search(r'"reason":\s*"([^"]*)', clean_text)
+            if reason_match and reason_match.group(1).strip():
+                return reason_match.group(1).strip()
+
+        except Exception as e:
+            logger.error(f"Forced QA reason generation failed: {e}")
+
+        target = "Ordner" if "Ordner" in selection_type else "Datei"
+        return f"{target} zu groß - Verwende Vector Search"
 
     def _generate_default_reason(self, mode: str, selection_type: str) -> str:
         """Generate a default reason when LLM response is incomplete."""

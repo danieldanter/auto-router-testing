@@ -91,31 +91,60 @@ Beispiele für gute "reason" Antworten:
 {{"mode": "SEARCH oder BASIC", "reason": "kontextbezogene Aktionsbeschreibung"}}
 """
 
+_ORIGINAL_FORCED_QA_PROMPT = """Der Benutzer hat {selection_type} ausgewählt, aber die Tokengröße überschreitet das Kontextlimit. Es wird automatisch Vector Search (QA) verwendet.
+
+KONTEXT:
+- Ausgewählt: {selection_type}
+- Details: {selection_info}
+- Modus: QA (Vector Search) - erzwungen wegen Tokengröße
+
+BENUTZERANFRAGE: "{query}"
+
+Erstelle eine kurze, kontextbezogene Aktionsbeschreibung (max 8 Wörter) für diese Anfrage.
+Nutze "{target_word}" statt "Dokument" wenn passend.
+
+Beispiele:
+- "Wer ist der Autor?" → "Durchsuche {target_word} nach dem Autor"
+- "Was steht über KI?" → "Suche KI-Informationen im {target_word}"
+- "Fasse zusammen" → "Durchsuche {target_word} per Vector Search"
+
+Antwort NUR als JSON:
+{{"reason": "kontextbezogene Aktionsbeschreibung"}}
+"""
+
 # Initialize widget keys for text_area (these are owned by the widget via key=)
 if "widget_files_prompt" not in st.session_state:
     st.session_state.widget_files_prompt = _ORIGINAL_FILES_PROMPT
 if "widget_no_files_prompt" not in st.session_state:
     st.session_state.widget_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+if "widget_forced_qa_prompt" not in st.session_state:
+    st.session_state.widget_forced_qa_prompt = _ORIGINAL_FORCED_QA_PROMPT
 
 # Track which prompts are actually applied to Gemini
 if "applied_files_prompt" not in st.session_state:
     st.session_state.applied_files_prompt = _ORIGINAL_FILES_PROMPT
 if "applied_no_files_prompt" not in st.session_state:
     st.session_state.applied_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+if "applied_forced_qa_prompt" not in st.session_state:
+    st.session_state.applied_forced_qa_prompt = _ORIGINAL_FORCED_QA_PROMPT
 
 # Always apply the confirmed prompts to module (survives reruns)
 gs.FILES_PROMPT = st.session_state.applied_files_prompt
 gs.NO_FILES_PROMPT = st.session_state.applied_no_files_prompt
+gs.FORCED_QA_PROMPT = st.session_state.applied_forced_qa_prompt
 
 
 def _reset_prompts():
     """Callback for Reset button - runs before next rerun so widget keys can be set."""
     st.session_state.widget_files_prompt = _ORIGINAL_FILES_PROMPT
     st.session_state.widget_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+    st.session_state.widget_forced_qa_prompt = _ORIGINAL_FORCED_QA_PROMPT
     st.session_state.applied_files_prompt = _ORIGINAL_FILES_PROMPT
     st.session_state.applied_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+    st.session_state.applied_forced_qa_prompt = _ORIGINAL_FORCED_QA_PROMPT
     gs.FILES_PROMPT = _ORIGINAL_FILES_PROMPT
     gs.NO_FILES_PROMPT = _ORIGINAL_NO_FILES_PROMPT
+    gs.FORCED_QA_PROMPT = _ORIGINAL_FORCED_QA_PROMPT
 
 # ============================================
 # Pseudo Test-Daten
@@ -330,6 +359,7 @@ with tab1:
                 # Ensure prompts are applied right before the call
                 gs.FILES_PROMPT = st.session_state.applied_files_prompt
                 gs.NO_FILES_PROMPT = st.session_state.applied_no_files_prompt
+                gs.FORCED_QA_PROMPT = st.session_state.applied_forced_qa_prompt
                 result = detector.detect(request)
 
             # Display result
@@ -379,11 +409,11 @@ with tab2:
     st.subheader("System Prompts bearbeiten")
     st.caption("Änderungen gelten sofort für den nächsten Analyse-Call.")
 
-    col_p1, col_p2 = st.columns([1, 1])
+    col_p1, col_p2, col_p3 = st.columns([1, 1, 1])
 
     with col_p1:
         st.markdown("#### FILES_PROMPT")
-        st.caption("Wird verwendet wenn Dateien/Ordner ausgewählt sind")
+        st.caption("Tokens ≤ 70% → LLM entscheidet QA vs BASIC")
         files_prompt_edit = st.text_area(
             "FILES_PROMPT",
             key="widget_files_prompt",
@@ -393,10 +423,20 @@ with tab2:
 
     with col_p2:
         st.markdown("#### NO_FILES_PROMPT")
-        st.caption("Wird verwendet wenn keine Dateien ausgewählt sind")
+        st.caption("Keine Dateien → LLM entscheidet SEARCH vs BASIC")
         no_files_prompt_edit = st.text_area(
             "NO_FILES_PROMPT",
             key="widget_no_files_prompt",
+            height=400,
+            label_visibility="collapsed",
+        )
+
+    with col_p3:
+        st.markdown("#### FORCED_QA_PROMPT")
+        st.caption("Tokens > 70% → QA erzwungen, Reason via LLM")
+        forced_qa_prompt_edit = st.text_area(
+            "FORCED_QA_PROMPT",
+            key="widget_forced_qa_prompt",
             height=400,
             label_visibility="collapsed",
         )
@@ -405,13 +445,15 @@ with tab2:
 
     with col_btn1:
         if st.button("Übernehmen", type="primary", use_container_width=True):
-            if not files_prompt_edit.strip() or not no_files_prompt_edit.strip():
+            if not files_prompt_edit.strip() or not no_files_prompt_edit.strip() or not forced_qa_prompt_edit.strip():
                 st.error("Prompts dürfen nicht leer sein! Nutze 'Reset' um die Originale wiederherzustellen.")
             else:
                 st.session_state.applied_files_prompt = files_prompt_edit
                 st.session_state.applied_no_files_prompt = no_files_prompt_edit
+                st.session_state.applied_forced_qa_prompt = forced_qa_prompt_edit
                 gs.FILES_PROMPT = files_prompt_edit
                 gs.NO_FILES_PROMPT = no_files_prompt_edit
+                gs.FORCED_QA_PROMPT = forced_qa_prompt_edit
                 st.success("Prompts aktualisiert!")
 
     with col_btn2:
