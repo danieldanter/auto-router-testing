@@ -38,6 +38,16 @@ if "applied_no_files_prompt" not in st.session_state:
 gs.FILES_PROMPT = st.session_state.applied_files_prompt
 gs.NO_FILES_PROMPT = st.session_state.applied_no_files_prompt
 
+
+def _reset_prompts():
+    """Callback for Reset button - runs before next rerun so widget keys can be set."""
+    st.session_state.widget_files_prompt = _ORIGINAL_FILES_PROMPT
+    st.session_state.widget_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+    st.session_state.applied_files_prompt = _ORIGINAL_FILES_PROMPT
+    st.session_state.applied_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
+    gs.FILES_PROMPT = _ORIGINAL_FILES_PROMPT
+    gs.NO_FILES_PROMPT = _ORIGINAL_NO_FILES_PROMPT
+
 # ============================================
 # Pseudo Test-Daten
 # ============================================
@@ -333,15 +343,7 @@ with tab2:
                 st.success("Prompts aktualisiert!")
 
     with col_btn2:
-        if st.button("Reset", use_container_width=True):
-            st.session_state.applied_files_prompt = _ORIGINAL_FILES_PROMPT
-            st.session_state.applied_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
-            st.session_state.widget_files_prompt = _ORIGINAL_FILES_PROMPT
-            st.session_state.widget_no_files_prompt = _ORIGINAL_NO_FILES_PROMPT
-            gs.FILES_PROMPT = _ORIGINAL_FILES_PROMPT
-            gs.NO_FILES_PROMPT = _ORIGINAL_NO_FILES_PROMPT
-            st.success("Prompts auf Original zurückgesetzt!")
-            st.rerun()
+        st.button("Reset", use_container_width=True, on_click=_reset_prompts)
 
 # ============================================
 # TAB 3: Logik-Übersicht
